@@ -4,10 +4,20 @@ Collect Microsoft Entra ID and Azure resource data from a signed-in portal tab f
 
 ## Use it
 
-1. Sign in to [Azure Portal](https://portal.azure.com/) or a Microsoft 365 admin page. Open that tab's Developer Tools console.
+1. Sign in to [Azure Portal](https://portal.azure.com/), a Microsoft 365 admin page, Microsoft Teams, Outlook, whatever is connected with MSAL tokens. Open that tab's Developer Tools console.
 2. Paste and run the full contents of [collector.js](collector.js).
+
+![assets/screenshot-1.png](assets/screenshot-1.png)
+
 3. Review the detected tenant and access in the popup. Select categories, adjust the request limits if needed, then click **Start collection**. Keep the tab open until it finishes.
+
+![assets/screenshot-1.png](assets/screenshot-2.png)
+
 4. Download **every ZIP part** shown in the popup and import each one into BloodHound CE. You can also download a category's JSON files separately.
+
+![assets/screenshot-1.png](assets/screenshot-3.png)
+
+![assets/screenshot-1.png](assets/screenshot-4.png)
 
 The popup shows object counts, a time estimate, and live progress. Select at least one of **Users**, **Groups**, **Registered applications**, or **Service principals** to make an importable collection.
 
