@@ -5,10 +5,43 @@
 (async function azureHoundBrowserCollector() {
   'use strict';
   if (window.AzureHound && window.AzureHound.running) throw new Error('AzureHound collection is already running');
-  const config = Object.assign({ concurrency: 4, retries: 4, pageTimeoutMs: 120000, graph: true, arm: true, download: true }, window.AzureHoundConfig || {});
+  const config = Object.assign({ concurrency: 4, retries: 4, pageTimeoutMs: 120000,
+    throttleMs: 0, requestsPerMinute: 0, progressIntervalMs: 10000,
+    graph: true, arm: true, download: true }, window.AzureHoundConfig || {});
   const state = { running: true, startedAt: new Date().toISOString(), errors: [], counts: {}, abortController: new AbortController(), files: {} };
   window.AzureHound = state;
   state.cancel = () => state.abortController.abort();
+  state.requests = { started: 0, completed: 0, failed: 0, retried: 0, throttled: 0, active: 0, lastEndpoint: null };
+  const nonnegative = value => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
+  const requestSpacingMs = Math.max(nonnegative(config.throttleMs),
+    nonnegative(config.requestsPerMinute) ? 60000 / nonnegative(config.requestsPerMinute) : 0);
+  let nextRequestAt = 0;
+  async function waitForRequestSlot() {
+    if (!requestSpacingMs) return;
+    const now = performance.now();
+    const slot = Math.max(now, nextRequestAt);
+    nextRequestAt = slot + requestSpacingMs;
+    if (slot > now) {
+      state.requests.throttled++;
+      await new Promise((resolve, reject) => {
+        const onAbort = () => {
+          clearTimeout(timer); reject(new Error('Collection cancelled'));
+        };
+        const timer = setTimeout(() => {
+          state.abortController.signal.removeEventListener('abort', onAbort);
+          resolve();
+        }, slot - now);
+        state.abortController.signal.addEventListener('abort', onAbort, { once: true });
+      });
+    }
+    if (state.abortController.signal.aborted) throw new Error('Collection cancelled');
+  }
+  state.progress = () => ({
+    elapsedSeconds: Math.round((Date.now() - Date.parse(state.startedAt)) / 1000),
+    requests: { ...state.requests }, records: Object.values(state.counts).reduce((sum, count) => sum + count, 0),
+    errors: state.errors.length, counts: { ...state.counts }
+  });
+  const logProgress = () => console.info('[AzureHound] Progress', state.progress());
   const upper = value => typeof value === 'string' ? value.toUpperCase() : value;
   const idUpper = object => {
     if (!object || typeof object !== 'object') return object;
@@ -141,10 +174,14 @@
     const url = urlFor(service, path, params);
     for (let attempt = 0; attempt <= config.retries; attempt++) {
       if (state.abortController.signal.aborted) throw new Error('Collection cancelled');
+      await waitForRequestSlot();
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), config.pageTimeoutMs);
       const cancel = () => controller.abort();
       state.abortController.signal.addEventListener('abort', cancel, { once: true });
+      state.requests.started++;
+      state.requests.active++;
+      state.requests.lastEndpoint = `${service.toUpperCase()} ${url.pathname}`;
       try {
         const response = await fetch(url, {
           method: 'GET',
@@ -153,6 +190,7 @@
           credentials: 'omit'
         });
         if ((response.status === 429 || response.status >= 500) && attempt < config.retries) {
+          state.requests.retried++;
           const retryAfter = Number(response.headers.get('Retry-After'));
           await delay(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : Math.min(30000, 1000 * 2 ** attempt));
           continue;
@@ -164,9 +202,13 @@
         }
         return await response.json();
       } catch (e) {
+        state.requests.failed++;
         if (e.name === 'TypeError') throw new Error(`Browser request failed for ${url.origin}. Check portal CORS policy and token audience: ${e.message}`);
         throw e;
       } finally {
+        state.requests.active--;
+        state.requests.completed++;
+        if (state.requests.completed % 25 === 0) logProgress();
         clearTimeout(timer);
         state.abortController.signal.removeEventListener('abort', cancel);
       }
@@ -475,25 +517,33 @@
     u32(ev, 12, centralLength); u32(ev, 16, offset);
     return new Blob([...parts, ...central, end], { type: 'application/zip' });
   }
+  state.warnings = () => {
+    const warnings = [];
+    if (config.graph) {
+      for (const kind of ['AZUser', 'AZGroup', 'AZApp', 'AZServicePrincipal', 'AZRole', 'AZRoleAssignment']) {
+        if (!state.counts[kind]) warnings.push(`No ${kind} records collected`);
+      }
+    }
+    if (state.errors.length) warnings.push(`${state.errors.length} collection errors; inspect errors for missing data`);
+    return warnings;
+  };
   state.report = () => ({
     collector: 'azurehound-browser', startedAt: state.startedAt,
     finishedAt: state.finishedAt || new Date().toISOString(),
     targetTenantId: targetTenant || graphTenant || null, tenantSource,
     availableTenantIds: state.availableTenantIds || [],
     graphPermissions: audience(tokens.graph || '')?.permissions || [],
-    cancelled: state.abortController.signal.aborted, counts: { ...state.counts }, errors: [...state.errors]
+    cancelled: state.abortController.signal.aborted, counts: { ...state.counts },
+    importable: state.validate().length === 0, warnings: state.warnings(),
+    progress: state.progress(), errors: [...state.errors]
   });
   state.validate = () => {
     const issues = [];
     const tenant = state.files.AZTenant?.find(entry => entry.data.collected && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(entry.data.tenantId));
     if (!tenant) issues.push('No collected tenant with a valid tenant ID');
-    const principals = ['AZUser', 'AZGroup', 'AZApp', 'AZServicePrincipal', 'AZDevice'].reduce((n, kind) => n + (state.counts[kind] || 0), 0);
-    if (!principals) issues.push('No directory principals were collected');
-    if (config.graph) {
-      for (const kind of ['AZUser', 'AZGroup', 'AZApp', 'AZServicePrincipal', 'AZRole', 'AZRoleAssignment']) {
-        if (!state.counts[kind]) issues.push(`Missing critical ${kind} collection; check Graph permissions and window.AzureHound.errors`);
-      }
-    }
+    const principals = ['AZUser', 'AZGroup', 'AZApp', 'AZServicePrincipal']
+      .some(kind => state.files[kind]?.some(entry => typeof entry.data.id === 'string' && entry.data.id.length > 0));
+    if (!principals) issues.push('No core directory objects with IDs were collected');
     if (state.abortController.signal.aborted) issues.push('Collection was cancelled');
     return issues;
   };
@@ -513,6 +563,8 @@
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     return blob;
   };
+  const progressTimer = setInterval(logProgress, Math.max(1000, nonnegative(config.progressIntervalMs) || 10000));
+  logProgress();
   try {
     if (!config.graphToken && !targetTenant && (state.availableTenantIds?.length || 0) > 1) {
       throw new Error(`Multiple Graph token tenants are cached (${state.availableTenantIds.join(', ')}). Set window.AzureHoundConfig.tenantId to the tenant to collect.`);
@@ -534,9 +586,10 @@
     const issues = state.validate();
     if (issues.length) {
       for (const issue of issues) error('Collection validation', issue);
-      console.error('[AzureHound] No importable ZIP was downloaded. Inspect window.AzureHound.errors.');
+      console.error('[AzureHound] No importable ZIP was downloaded. Inspect window.AzureHound.report().');
     } else if (config.download) await state.download();
+    if (!issues.length && state.warnings().length) console.warn('[AzureHound] Partial collection; inspect window.AzureHound.report() before importing.');
     console.info('[AzureHound] Collection finished', state.counts, `${state.errors.length} errors`);
     return state;
-  } finally { state.running = false; }
+  } finally { state.running = false; clearInterval(progressTimer); logProgress(); }
 })();

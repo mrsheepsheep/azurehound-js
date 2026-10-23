@@ -103,7 +103,7 @@ setTimeout(()=>{const s=window.AzureHound;document.body.textContent=JSON.stringi
     assert empty_result.returncode == 0, empty_result.stderr
     empty_body = html.unescape(re.search(r'<body>(.*?)</body>', empty_result.stdout, re.S).group(1))
     empty_report = json.loads(empty_body)
-    assert 'No directory principals were collected' in empty_report['issues']
+    assert 'No core directory objects with IDs were collected' in empty_report['issues']
     assert empty_report['errors']
     print('Passed: empty directory collection is rejected')
 
@@ -157,3 +157,58 @@ setTimeout(()=>{const s=window.AzureHound;document.body.textContent=JSON.stringi
     assert active_report['report']['tenantSource'] == 'active MSAL account'
     assert not active_report['issues'], active_report
     print('Passed: active account selects tenant despite multiple cached tenants')
+
+    partial_setup = setup.replace(
+        '  return {ok:true,status:200,json:async()=>body,headers:new Headers()};',
+        """  if(url.pathname==='/v1.0/roleManagement/directory/roleDefinitions')
+    return {ok:false,status:403,json:async()=>({error:{message:'Insufficient privileges'}}),headers:new Headers()};
+  return {ok:true,status:200,json:async()=>body,headers:new Headers()};""")
+    partial_page = Path(tmp, 'partial.html')
+    partial_page.write_text('<!doctype html><body><script>' + partial_setup + '</script><script>' + source + '''</script><script>
+setTimeout(async()=>{const s=window.AzureHound;try{
+ const archive=await s.makeZip();document.body.textContent=JSON.stringify({size:archive.size,report:s.report()});
+}catch(e){document.body.textContent='ERROR '+e.message;}},1000);
+</script></body>''')
+    partial_result = subprocess.run([
+        chrome, '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+        f'--user-data-dir={Path(tmp, "partial-profile")}', '--virtual-time-budget=5000',
+        '--dump-dom', partial_page.as_uri()
+    ], capture_output=True, text=True, timeout=30)
+    assert partial_result.returncode == 0, partial_result.stderr
+    partial_body = html.unescape(re.search(r'<body>(.*?)</body>', partial_result.stdout, re.S).group(1))
+    assert not partial_body.startswith('ERROR'), partial_body
+    partial_report = json.loads(partial_body)
+    assert partial_report['size'] > 0
+    assert partial_report['report']['importable'] is True
+    assert partial_report['report']['errors']
+    assert any('AZRole' in warning for warning in partial_report['report']['warnings'])
+    print('Passed: ZIP builds when optional role collection fails')
+
+    throttle_setup = setup.replace(
+        "window.AzureHoundConfig={graphToken:'graph-test',armToken:'arm-test',download:false};",
+        """window.AzureHoundConfig={graphToken:'graph-test',armToken:'arm-test',download:false,
+ throttleMs:10,requestsPerMinute:3000};
+window.progressMessages=[];
+const originalInfo=console.info;
+console.info=(...args)=>{if(args[0]==='[AzureHound] Progress') progressMessages.push(args[1]);originalInfo(...args);};""")
+    throttle_setup = throttle_setup.replace('urls.push(url.href);', 'urls.push({url:url.href,at:performance.now()});')
+    throttle_page = Path(tmp, 'throttle.html')
+    throttle_page.write_text('<!doctype html><body><script>' + throttle_setup + '</script><script>' + source + '''</script><script>
+setTimeout(()=>{const s=window.AzureHound;document.body.textContent=JSON.stringify({
+ times:urls.map(value=>value.at),progress:progressMessages,report:s.report(),running:s.running
+});},1500);
+</script></body>''')
+    throttle_result = subprocess.run([
+        chrome, '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+        f'--user-data-dir={Path(tmp, "throttle-profile")}', '--virtual-time-budget=6000',
+        '--dump-dom', throttle_page.as_uri()
+    ], capture_output=True, text=True, timeout=30)
+    assert throttle_result.returncode == 0, throttle_result.stderr
+    throttle_body = html.unescape(re.search(r'<body>(.*?)</body>', throttle_result.stdout, re.S).group(1))
+    throttle_report = json.loads(throttle_body)
+    assert throttle_report['running'] is False, throttle_report
+    assert len(throttle_report['times']) == 32, throttle_report
+    assert min(b-a for a,b in zip(throttle_report['times'],throttle_report['times'][1:])) >= 17
+    assert len(throttle_report['progress']) >= 2
+    assert throttle_report['report']['progress']['requests']['completed'] == 32
+    print('Passed: global request pacing and live progress')
