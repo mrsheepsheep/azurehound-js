@@ -1,6 +1,17 @@
 # AzureHound browser collector
 
-`collector.js` is a single self-contained JavaScript eval for a signed-in Azure Portal or Microsoft 365 admin page. It calls Microsoft Graph and Azure Resource Manager from that tab, then creates BloodHound CE JSON files with the same `data` and `meta` envelope as the Go AzureHound collector. Large collections are split into bounded JSON files and ZIP archives; each ZIP is assembled locally and compressed with DEFLATE when supported. No collected data or tokens are sent to this project.
+`collector.js` is a single self-contained JavaScript eval for a signed-in Azure Portal or Microsoft 365 admin page, compiled from the TypeScript modules in `src/`. It calls Microsoft Graph and Azure Resource Manager from that tab, then creates BloodHound CE JSON files with the same `data` and `meta` envelope as the Go AzureHound collector. Large collections are split into bounded JSON files and ZIP archives; each ZIP is assembled locally and compressed with DEFLATE when supported. No collected data or tokens are sent to this project.
+
+## Build
+
+Install Node.js 18 or newer, then run:
+
+```sh
+npm ci
+npm run build
+```
+
+Edit the modules in `src/`; `npm run build` regenerates the browser-ready `collector.js`. The generated file has no runtime dependencies and can still be pasted directly into a portal console. Run `npm run check` for TypeScript diagnostics and `npm test` for the browser tests.
 
 ## Run
 

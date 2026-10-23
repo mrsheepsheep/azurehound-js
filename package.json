@@ -1,0 +1,15 @@
+{
+  "name": "azurehound-browser-collector",
+  "private": true,
+  "version": "1.0.0",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "test": "npm run build && python3 test_browser.py"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0"
+  }
+}
