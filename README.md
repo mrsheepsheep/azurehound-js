@@ -2,6 +2,8 @@
 
 Collect Microsoft Entra ID and Azure resource data from a signed-in portal tab for import into BloodHound CE. The collector runs in the browser and downloads ZIP files.
 
+This is a vibe-coded Typescript port of [SpectorOps's AzureHound](https://github.com/SpecterOps/AzureHound)
+
 ## Usage
 
 1. Sign in to [Azure Portal](https://portal.azure.com/), a Microsoft 365 admin page, Microsoft Teams, Outlook, whatever is connected with MSAL tokens. Open that tab's Developer Tools console.
