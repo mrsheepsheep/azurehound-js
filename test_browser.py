@@ -314,6 +314,59 @@ setTimeout(async()=>{try{const s=window.AzureHound;document.body.textContent=JSO
     assert not any('/v1.0/users' in url and '%24count=true' not in url for url in interactive_report['urls'])
     print('Passed: preflight popup selects application-only collection')
 
+    token_page = Path(tmp, 'tokens.html')
+    token_page.write_text('<!doctype html><body><script>' + interactive_setup + '''
+const cachedAccessToken=['header',btoa(JSON.stringify({aud:'https://graph.microsoft.com',
+ tid:'11111111-2222-3333-4444-555555555555',exp:4102444800,
+ scp:'Directory.Read.All Directory.ReadWrite.All User.Read.All User.ReadWrite.All Group.Read.All Application.Read.All RoleManagement.Read.Directory'})),'signature'].join('.');
+sessionStorage.setItem('msal.accessToken.one',JSON.stringify({credentialType:'AccessToken',secret:cachedAccessToken}));
+sessionStorage.setItem('msal.idToken.one',JSON.stringify({credentialType:'IdToken',secret:cachedAccessToken}));
+Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{window.copiedToken=value;}}});
+</script><script>''' + source + '''</script><script>
+let tokenChecks={};
+setTimeout(()=>{const root=document.getElementById('azurehound-preflight').shadowRoot;
+ const button=root.getElementById('view-tokens');
+ tokenChecks.topRight=button.parentElement.className==='panel-header';
+ button.click();
+ const dialog=root.getElementById('token-backdrop');
+ tokenChecks.open=!dialog.hidden;
+ tokenChecks.focusTitle=root.activeElement?.id==='token-title';
+ tokenChecks.rows=root.querySelectorAll('.token-card').length;
+ tokenChecks.hiddenBefore=!root.querySelector('.token-value');
+ tokenChecks.font=getComputedStyle(dialog).fontFamily.includes('system-ui');
+ tokenChecks.tenant=root.querySelector('.token-tenant-value').textContent==='11111111-2222-3333-4444-555555555555';
+ tokenChecks.expiry=root.querySelector('.token-expiry-value').textContent.includes('remaining')&&
+  root.querySelector('.token-exact-date').textContent.includes('2100');
+ tokenChecks.groups=[...root.querySelectorAll('.permission-group summary span:first-child')].map(node=>node.textContent);
+ tokenChecks.collapsed=[...root.querySelectorAll('.permission-group')].every(group=>!group.open);
+ root.querySelector('.token-actions button').click();
+ tokenChecks.revealed=root.querySelector('.token-value').value===cachedAccessToken;
+ root.querySelectorAll('.token-actions button')[1].click();
+ setTimeout(()=>{
+  tokenChecks.copied=window.copiedToken===cachedAccessToken;
+  root.getElementById('close-tokens').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  tokenChecks.closed=dialog.hidden;
+  tokenChecks.parentOpen=!!root.getElementById('start')&&window.AzureHound.running;
+  root.getElementById('cancel').click();
+ },0);
+},100);
+setTimeout(()=>{document.body.textContent=JSON.stringify(tokenChecks);},450);
+</script></body>''')
+    token_result = subprocess.run([
+        chrome, '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+        f'--user-data-dir={Path(tmp, "token-profile")}', '--virtual-time-budget=3000',
+        '--dump-dom', token_page.as_uri()
+    ], capture_output=True, text=True, timeout=30)
+    assert token_result.returncode == 0, token_result.stderr
+    token_body = html.unescape(re.search(r'<body>(.*?)</body>', token_result.stdout, re.S).group(1))
+    token_report = json.loads(token_body)
+    assert token_report == {'topRight': True, 'open': True, 'focusTitle': True, 'rows': 1, 'hiddenBefore': True,
+                            'font': True, 'tenant': True, 'expiry': True,
+                            'groups': ['Application', 'Directory', 'Group', 'RoleManagement', 'User'],
+                            'collapsed': True, 'revealed': True, 'copied': True, 'closed': True,
+                            'parentOpen': True}, token_report
+    print('Passed: MSAL token viewer reveals, copies, and closes independently')
+
     large_count_setup = interactive_setup.replace("'/v1.0/applications':1,", "'/v1.0/applications':100,")
     large_count_page = Path(tmp, 'large-count.html')
     large_count_page.write_text('<!doctype html><body><script>' + large_count_setup + '</script><script>' + source + '''</script><script>

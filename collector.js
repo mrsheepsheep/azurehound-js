@@ -665,7 +665,7 @@
 
   // src/popup.ts
   function createPopup(ctx) {
-    const { state, config, graphOptions: graphOptions2, armOptions: armOptions2, chosen, elapsed, recordKindsFor: recordKindsFor2, categoryRecordCount, error } = ctx;
+    const { state, config, graphOptions: graphOptions2, armOptions: armOptions2, chosen, elapsed, recordKindsFor: recordKindsFor2, categoryRecordCount, error, listTokens } = ctx;
     function showPreflight(result) {
       return new Promise((resolve) => {
         const host = document.createElement("div");
@@ -676,6 +676,8 @@
         :host{all:initial} .backdrop{position:fixed;inset:0;z-index:2147483647;background:rgba(8,13,28,.82);display:grid;place-items:center;font:14px/1.45 system-ui, sans-serif;color:#e2e8f0}
         .panel{box-sizing:border-box;width:min(760px,calc(100vw - 28px));max-height:min(90vh,900px);overflow:auto;background:#111827;border:1px solid #475569;border-radius:14px;box-shadow:0 24px 80px #0009;padding:24px}
         h2{margin:0 0 4px;font-size:22px;color:#c4b5fd} h3{font-size:15px;margin:20px 0 8px;color:#c4b5fd} p{margin:6px 0 14px;color:#cbd5e1}
+        .panel-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:4px}
+        .panel-header button{white-space:nowrap;background:#334155;border:1px solid #64748b;color:#e2e8f0;font:inherit;padding:6px 10px;border-radius:7px;cursor:pointer}
         .facts{display:grid;grid-template-columns:140px 1fr;gap:5px 12px;padding:12px;background:#1e293b;border-radius:8px;word-break:break-word}
         .label{color:#94a3b8}.ok{color:#86efac}.bad{color:#fca5a5}.note{color:#fcd34d}
         .choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px} label.choice{display:flex;gap:8px;align-items:flex-start;cursor:pointer}
@@ -693,7 +695,30 @@
         .progress-row span:last-child{color:#94a3b8;white-space:nowrap}.download-list{display:grid;gap:7px;max-height:48vh;overflow:auto;margin:12px 0}
         .download-row button,.actions button{font:inherit;padding:7px 12px;border-radius:7px;cursor:pointer}
         .download-row button{background:#334155;border:1px solid #64748b;color:#e2e8f0}.download-row small{color:#94a3b8}
-        @media(max-width:600px){.choices,.settings{grid-template-columns:1fr}.facts{grid-template-columns:100px 1fr}.panel{padding:16px}}
+        .token-backdrop{position:fixed;inset:0;z-index:2147483647;background:rgba(3,7,18,.9);display:grid;place-items:center;font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e2e8f0}
+        .token-backdrop[hidden],.token-value[hidden]{display:none}
+        .token-panel{width:min(680px,calc(100vw - 28px));max-height:85vh;overflow:auto;background:#111827;border:1px solid #64748b;border-radius:14px;padding:22px;box-sizing:border-box;box-shadow:0 24px 80px #000b}
+        .token-list{display:grid;gap:12px;margin-top:14px}.token-card{background:#1e293b;border:1px solid #334155;border-radius:9px;padding:16px;overflow-wrap:anywhere}
+        .token-card-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+        .token-card-header strong{font-size:16px;color:#f8fafc}.token-storage{color:#cbd5e1;background:#334155;padding:3px 8px;border-radius:999px;font-size:12px;white-space:nowrap}
+        .token-facts{display:grid;gap:8px;margin-bottom:14px}
+        .token-fact{display:grid;grid-template-columns:70px minmax(0,1fr);align-items:center;gap:10px;background:#0f172a;border:1px solid #334155;border-radius:7px;padding:10px}
+        .token-fact-label{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8}
+        .token-tenant-value{font:600 14px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;color:#f8fafc;overflow-wrap:anywhere}
+        .token-expiry-value{font-size:14px;font-weight:700;color:#86efac}.token-expiry-value.expired{color:#fca5a5}
+        .token-expiry-details{display:grid;gap:2px}.token-exact-date{font-size:12px;color:#cbd5e1}
+        .token-permissions-title{font-size:13px;font-weight:700;color:#e2e8f0;margin:0 0 7px}
+        .permission-groups{display:grid;gap:6px}.permission-group{border:1px solid #475569;border-radius:7px;background:#0f172a}
+        .permission-group summary{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;padding:7px 10px;font-weight:600;color:#c4b5fd;list-style:none}
+        .permission-group summary::-webkit-details-marker{display:none}.permission-group summary::before{content:'\u25B8';margin-right:5px;color:#94a3b8}
+        .permission-group[open] summary::before{content:'\u25BE'}.permission-group summary span:first-child{flex:1}
+        .permission-count{color:#94a3b8;font-size:12px;font-weight:500}
+        .permission-chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 10px 10px}
+        .permission-chip{background:#334155;border-radius:5px;padding:4px 7px;font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;color:#e2e8f0;overflow-wrap:anywhere}
+        .token-actions{display:flex;gap:8px;margin-top:10px}.token-actions button,#close-tokens{font:inherit;padding:7px 12px;border-radius:7px;cursor:pointer;background:#334155;border:1px solid #64748b;color:#e2e8f0}
+        .token-copy-status{display:block;min-height:18px;margin-top:4px;color:#86efac;font-size:12px}
+        .token-value{box-sizing:border-box;width:100%;min-height:100px;margin-top:10px;padding:8px;background:#0f172a;border:1px solid #64748b;border-radius:6px;color:#e2e8f0;font:12px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}
+        @media(max-width:600px){.choices,.settings{grid-template-columns:1fr}.facts{grid-template-columns:100px 1fr}.panel,.token-panel{padding:16px}}
       `;
         const element = (tag, id, className, label) => {
           const node = document.createElement(tag);
@@ -707,7 +732,13 @@
         panel.setAttribute("role", "dialog");
         panel.setAttribute("aria-modal", "true");
         panel.setAttribute("aria-labelledby", "title");
-        panel.append(element("h2", "title", null, "AzureHound browser collection"));
+        const header = element("div", null, "panel-header");
+        const heading = element("h2", "title", null, "AzureHound browser collection");
+        const tokensButton = element("button", "view-tokens", null, "Tokens");
+        tokensButton.type = "button";
+        tokensButton.setAttribute("aria-haspopup", "dialog");
+        header.append(heading, tokensButton);
+        panel.append(header);
         panel.append(element("p", null, null, "Review the detected session and choose what to collect."));
         panel.append(element("div", "facts", "facts"));
         const issuesBox = element("div", "issues", "issues");
@@ -728,6 +759,151 @@
         panel.append(actions);
         backdrop.append(panel);
         shadow.append(stylesheet, backdrop);
+        const tokenBackdrop = element("div", "token-backdrop", "token-backdrop");
+        tokenBackdrop.hidden = true;
+        const tokenPanel = element("section", "token-dialog", "token-panel");
+        tokenPanel.setAttribute("role", "dialog");
+        tokenPanel.setAttribute("aria-modal", "true");
+        tokenPanel.setAttribute("aria-labelledby", "token-title");
+        const tokenTitle = element("h2", "token-title", null, "MSAL access tokens");
+        tokenTitle.tabIndex = -1;
+        tokenPanel.append(tokenTitle);
+        tokenPanel.append(element("p", null, null, "Access tokens found in this tab\u2019s browser storage. Reveal or copy a token below."));
+        const tokenList = element("div", "token-list", "token-list");
+        const tokenControls = element("div", null, "actions");
+        const closeTokens = element("button", "close-tokens", null, "Close");
+        closeTokens.type = "button";
+        tokenControls.append(closeTokens);
+        tokenPanel.append(tokenList, tokenControls);
+        tokenBackdrop.append(tokenPanel);
+        shadow.append(tokenBackdrop);
+        const closeTokenViewer = () => {
+          tokenBackdrop.hidden = true;
+          tokenList.replaceChildren();
+          panel.removeAttribute("aria-hidden");
+          tokensButton.focus();
+        };
+        const copyToken = async (token) => {
+          if (navigator.clipboard?.writeText) {
+            try {
+              await navigator.clipboard.writeText(token);
+              return true;
+            } catch {
+            }
+          }
+          const field = document.createElement("textarea");
+          field.value = token;
+          field.style.cssText = "position:fixed;left:-9999px;top:0";
+          tokenPanel.append(field);
+          field.select();
+          let copied = false;
+          try {
+            copied = document.execCommand("copy");
+          } catch {
+          }
+          field.remove();
+          return copied;
+        };
+        tokensButton.addEventListener("click", () => {
+          tokenList.replaceChildren();
+          let found;
+          try {
+            found = listTokens();
+          } catch {
+            tokenList.append(element("p", null, "bad", "Browser storage could not be read."));
+          }
+          if (found?.length) for (const item of found) {
+            const card = element("div", null, "token-card");
+            const resource = item.audience.includes("graph.microsoft.com") || item.audience === "00000003-0000-0000-c000-000000000000" ? "Microsoft Graph" : item.audience.includes("management.azure.com") || item.audience.includes("management.core.windows.net") ? "Azure Resource Manager" : item.audience;
+            const expiry = new Date(item.expiresAt * 1e3);
+            const cardHeader = element("div", null, "token-card-header");
+            cardHeader.append(element("strong", null, null, resource), element("span", null, "token-storage", item.storage));
+            const facts2 = element("div", null, "token-facts");
+            const tenantFact = element("div", null, "token-fact");
+            tenantFact.append(
+              element("span", null, "token-fact-label", "Tenant"),
+              element("span", null, "token-tenant-value", item.tenantId || "Unknown tenant")
+            );
+            const expiryFact = element("div", null, "token-fact");
+            const remainingMinutes = Math.floor((expiry.getTime() - Date.now()) / 6e4);
+            const remaining = remainingMinutes < 0 ? "Expired" : remainingMinutes < 60 ? `${Math.max(1, remainingMinutes)} min remaining` : remainingMinutes < 1440 ? `${Math.floor(remainingMinutes / 60)} hr ${remainingMinutes % 60} min remaining` : `${Math.floor(remainingMinutes / 1440)} days ${Math.floor(remainingMinutes % 1440 / 60)} hr remaining`;
+            const exactDate = new Intl.DateTimeFormat(void 0, {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZoneName: "short"
+            }).format(expiry);
+            const expiryDetails = element("div", null, "token-expiry-details");
+            expiryDetails.append(
+              element("span", null, `token-expiry-value${remainingMinutes < 0 ? " expired" : ""}`, remaining),
+              element("span", null, "token-exact-date", exactDate)
+            );
+            expiryFact.append(element("span", null, "token-fact-label", "Expires"), expiryDetails);
+            facts2.append(tenantFact, expiryFact);
+            card.append(cardHeader, facts2);
+            const uniquePermissions = [...new Set(item.permissions)].sort((a, b) => a.localeCompare(b));
+            if (uniquePermissions.length) {
+              const groups = /* @__PURE__ */ new Map();
+              for (const permission of uniquePermissions) {
+                const prefix = permission.includes(".") ? permission.split(".")[0] : "Other";
+                if (!groups.has(prefix)) groups.set(prefix, []);
+                groups.get(prefix).push(permission);
+              }
+              card.append(element("div", null, "token-permissions-title", `Permissions (${uniquePermissions.length})`));
+              const groupList = element("div", null, "permission-groups");
+              for (const [prefix, permissions] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
+                const group = element("details", null, "permission-group");
+                group.open = uniquePermissions.length <= 6;
+                const summary = element("summary");
+                summary.append(element("span", null, null, prefix), element("span", null, "permission-count", String(permissions.length)));
+                const chips = element("div", null, "permission-chips");
+                for (const permission of permissions) chips.append(element("span", null, "permission-chip", permission));
+                group.append(summary, chips);
+                groupList.append(group);
+              }
+              card.append(groupList);
+            }
+            const actions2 = element("div", null, "token-actions");
+            const reveal = element("button", null, null, "Reveal");
+            const copy = element("button", null, null, "Copy");
+            const status = element("small", null, "token-copy-status");
+            status.setAttribute("aria-live", "polite");
+            reveal.type = "button";
+            copy.type = "button";
+            let tokenValue = null;
+            reveal.addEventListener("click", () => {
+              if (tokenValue) {
+                tokenValue.remove();
+                tokenValue = null;
+                reveal.textContent = "Reveal";
+                return;
+              }
+              tokenValue = document.createElement("textarea");
+              tokenValue.className = "token-value";
+              tokenValue.readOnly = true;
+              tokenValue.value = item.token;
+              card.append(tokenValue);
+              reveal.textContent = "Hide";
+            });
+            copy.addEventListener("click", async () => {
+              status.textContent = await copyToken(item.token) ? "Copied to clipboard" : "Copy failed; reveal and select the token";
+            });
+            actions2.append(reveal, copy);
+            card.append(actions2, status);
+            tokenList.append(card);
+          }
+          else if (found) tokenList.append(element("p", null, "note", "No MSAL access tokens were found in this tab\u2019s browser storage."));
+          tokenBackdrop.hidden = false;
+          panel.setAttribute("aria-hidden", "true");
+          tokenTitle.focus();
+          tokenPanel.scrollTop = 0;
+        });
+        closeTokens.addEventListener("click", closeTokenViewer);
+        tokenBackdrop.addEventListener("click", (event) => {
+          if (event.target === tokenBackdrop) closeTokenViewer();
+        });
         const facts = shadow.getElementById("facts");
         const fact = (label, value, className = "") => {
           const a = document.createElement("span"), b = document.createElement("span");
@@ -852,7 +1028,7 @@
           started = true;
           const kinds = boxes.filter((box) => box.checked).map((box) => box.dataset.kind);
           const limits = settingsValue();
-          const title = element("h2", "title", null, "Collecting Azure data");
+          heading.textContent = "Collecting Azure data";
           const summary = element("p", "progress-summary", null, "Starting collection\u2026");
           const rows = element("div", "progress-rows", "progress-list");
           const controls = element("div", null, "actions");
@@ -860,7 +1036,7 @@
           stop.type = "button";
           stop.addEventListener("click", () => state.cancel());
           controls.append(stop);
-          panel.replaceChildren(title, summary, rows, controls);
+          panel.replaceChildren(header, summary, rows, controls);
           state.popup = {
             update() {
               if (!host.isConnected || !state.running) return;
@@ -886,12 +1062,8 @@
             },
             finish() {
               if (!host.isConnected) return;
-              const issues = state.validate(), title2 = element(
-                "h2",
-                "title",
-                null,
-                issues.length ? "Collection stopped" : "Collection complete"
-              );
+              const issues = state.validate();
+              heading.textContent = issues.length ? "Collection stopped" : "Collection complete";
               const report = state.progress();
               const message = element("p", null, null, `${report.records.toLocaleString()} records \xB7 ${report.requests.completed} requests \xB7 ${report.errors} errors`);
               const details = element(
@@ -960,23 +1132,78 @@
               close.type = "button";
               close.addEventListener("click", () => host.remove());
               controls2.append(close);
-              panel.replaceChildren(title2, message, details, downloads, controls2);
+              panel.replaceChildren(header, message, details, downloads, controls2);
             }
           };
           state.popup.update();
           resolve({ kinds, reuse: cacheCheckbox.checked, limits });
         });
         shadow.addEventListener("keydown", (event) => {
-          if (event.key === "Escape") {
-            if (!started) cancel();
-            else state.cancel();
+          if (event.key !== "Escape") return;
+          if (!tokenBackdrop.hidden) {
+            closeTokenViewer();
+            return;
           }
+          if (!started) cancel();
+          else state.cancel();
         });
         (document.body || document.documentElement).append(host);
         shadow.getElementById("cancel").focus();
       });
     }
     return showPreflight;
+  }
+
+  // src/tokens.ts
+  function listMsalAccessTokens(decode) {
+    const found = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const [storageName, getStorage] of [
+      ["Session storage", () => sessionStorage],
+      ["Local storage", () => localStorage]
+    ]) {
+      let storage;
+      try {
+        storage = getStorage();
+      } catch {
+        continue;
+      }
+      for (let index = 0; index < storage.length; index++) {
+        const key = storage.key(index);
+        if (!key || !/(msal|accesstoken|access_token)/i.test(key)) continue;
+        let raw;
+        try {
+          raw = storage.getItem(key);
+        } catch {
+          continue;
+        }
+        if (!raw) continue;
+        let candidates = [];
+        try {
+          const entry = JSON.parse(raw);
+          const credentialType = String(entry?.credentialType || "").toLowerCase();
+          if (credentialType && !credentialType.startsWith("accesstoken")) continue;
+          candidates = [entry?.accessToken, entry?.secret, entry?.token, entry?.credential].filter((value) => typeof value === "string");
+        } catch {
+          if (/(accesstoken|access_token)/i.test(key)) candidates = [raw];
+        }
+        for (const token of candidates) {
+          if (seen.has(token) || token.split(".").length !== 3) continue;
+          const claims = decode(token);
+          if (!claims?.aud || !Number.isFinite(claims.exp) || claims.exp <= 0) continue;
+          seen.add(token);
+          found.push({
+            token,
+            audience: claims.aud,
+            tenantId: claims.tid || null,
+            expiresAt: claims.exp,
+            permissions: claims.permissions,
+            storage: storageName
+          });
+        }
+      }
+    }
+    return found.sort((a, b) => b.expiresAt - a.expiresAt);
   }
 
   // src/main.ts
@@ -1687,7 +1914,18 @@
     const { jsonLimit, boundedEntries, categoryEntries } = createExporter({ state, config, recordKindsFor, graphOptions, armOptions, delay, colors });
     const { cacheMetadata, categoryRecordCount, reuseCache, saveCache } = createCache({ state, config, graphOptions, armOptions, recordKindsFor, jsonLimit, boundedEntries, categoryEntries, nonnegative, chosen, cachedKinds, add, logCategory });
     const runPreflight = createPreflight({ state, config, request, targetTenant, graphTenant, tenantSource, tokens, audience, isTenantId, armTenant, tokenMismatch, cacheMetadata });
-    const showPreflight = createPopup({ state, config, graphOptions, armOptions, chosen, elapsed, recordKindsFor, categoryRecordCount, error });
+    const showPreflight = createPopup({
+      state,
+      config,
+      graphOptions,
+      armOptions,
+      chosen,
+      elapsed,
+      recordKindsFor,
+      categoryRecordCount,
+      error,
+      listTokens: () => listMsalAccessTokens(audience)
+    });
     let progressTimer = null;
     try {
       let reuse = config.useCache !== false;

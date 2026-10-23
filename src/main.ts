@@ -6,6 +6,7 @@ import { createExporter } from './export';
 import { createCache } from './cache';
 import { createPreflight } from './preflight';
 import { createPopup } from './popup';
+import { listMsalAccessTokens } from './tokens';
 
 declare global { interface Window { AzureHound: any; AzureHoundConfig: any; } }
 
@@ -605,7 +606,8 @@ const completion = (async function azureHoundBrowserCollector() {
   const { jsonLimit, boundedEntries, categoryEntries } = createExporter({ state, config, recordKindsFor, graphOptions, armOptions, delay, colors });
   const { cacheMetadata, categoryRecordCount, reuseCache, saveCache } = createCache({ state, config, graphOptions, armOptions, recordKindsFor, jsonLimit, boundedEntries, categoryEntries, nonnegative, chosen, cachedKinds, add, logCategory });
   const runPreflight = createPreflight({ state, config, request, targetTenant, graphTenant, tenantSource, tokens, audience, isTenantId, armTenant, tokenMismatch, cacheMetadata });
-  const showPreflight = createPopup({ state, config, graphOptions, armOptions, chosen, elapsed, recordKindsFor, categoryRecordCount, error });
+  const showPreflight = createPopup({ state, config, graphOptions, armOptions, chosen, elapsed, recordKindsFor,
+    categoryRecordCount, error, listTokens: () => listMsalAccessTokens(audience) });
   let progressTimer = null;
   try {
     let reuse = config.useCache !== false;
